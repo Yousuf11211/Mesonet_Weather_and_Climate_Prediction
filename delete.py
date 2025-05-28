@@ -74,7 +74,7 @@ for filename in target_sites:
 
         # --- Prompt for deletion of early rows ---
         to_delete = df[df.index < start_time]
-        print(f"\n❓ {len(to_delete)} rows occur before {start_time} and will be deleted.")
+        print(f"\n{len(to_delete)} rows occur before {start_time} and will be deleted.")
         user_input = input("Do you want to delete these rows and save a new CSV? (y/n): ").strip().lower()
 
         if user_input == 'y':
@@ -86,9 +86,9 @@ for filename in target_sites:
                 filtered_df = filtered_df[desired_order]
             else:
                 missing_cols = [col for col in desired_order if col not in filtered_df.columns]
-                print(f"⚠ Warning: Missing columns {missing_cols}. CSV will not be reordered.")
+                print(f"Warning: Missing columns {missing_cols}. CSV will not be reordered.")
 
-            output_csv_path = os.path.join(filtered_folder, f"updated_{filename}")
+            output_csv_path = os.path.join(filtered_folder, f"{filename}")
             filtered_df.to_csv(output_csv_path, index=False)
             print(f"New filtered CSV saved: {output_csv_path}")
         else:
