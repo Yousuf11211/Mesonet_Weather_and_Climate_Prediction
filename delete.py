@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # Folder and file setup
-input_folder = 'b'
+input_folder = 'Original_data'
 output_folder = 'updated_site_reports'
 filtered_folder = 'filtered_data'
 target_sites = ['ELST.csv', 'LXGN.csv']
@@ -40,7 +40,7 @@ for filename in target_sites:
         valid_mask = df[required_cols].notna().all(axis=1)
         start_time = df.index[valid_mask].min()
 
-        expected_index = pd.date_range(start=start_time, end=cutoff, freq='5min')
+        expected_index = pd.date_range(start=start_time, end=df.index.max(), freq='5min')
         missing_ts = expected_index.difference(df.index)
         rows_expected = len(expected_index)
         rows_present = rows_expected - len(missing_ts)
@@ -90,11 +90,11 @@ for filename in target_sites:
 
             output_csv_path = os.path.join(filtered_folder, f"updated_{filename}")
             filtered_df.to_csv(output_csv_path, index=False)
-            print(f"📁 New filtered CSV saved: {output_csv_path}")
+            print(f"New filtered CSV saved: {output_csv_path}")
         else:
-            print("⏩ Skipped saving filtered CSV.")
+            print("Skipped saving filtered CSV.")
 
         del df
 
     except Exception as e:
-        print(f"❌ Failed to process {site_name}: {e}")
+        print(f"Failed to process {site_name}: {e}")
