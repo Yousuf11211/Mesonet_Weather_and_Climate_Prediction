@@ -18,7 +18,7 @@ df.set_index("UTCTimestampCollected", inplace=True)
 
 # --- Print total rows ---
 total_rows = len(df)
-print(f"\n📄 Total rows in {target_file}: {total_rows}")
+print(f"\nTotal rows in {target_file}: {total_rows}")
 
 # --- Function to analyze a column ---
 def analyze_column(series, label):
@@ -28,10 +28,10 @@ def analyze_column(series, label):
     null_count = series.isna().sum()
     zero_count = (series == 0).sum()
 
-    print(f"\n📊 Analysis for {label}")
-    print(f"  🔁 Value changes: {changes}")
-    print(f"  ❌ Null entries  : {null_count}")
-    print(f"  0️⃣  Zero values  : {zero_count}")
+    print(f"\nAnalysis for {label}")
+    print(f"Value changes: {changes}")
+    print(f"Null entries  : {null_count}")
+    print(f" Zero values  : {zero_count}")
 
 # --- Run for both SM02 and SM04 ---
 analyze_column(df["SM02"], "SM02")

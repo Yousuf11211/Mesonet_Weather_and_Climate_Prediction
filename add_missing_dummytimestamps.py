@@ -3,7 +3,7 @@ import os
 
 # Folders
 input_folder = 'filtered_data'
-output_folder = 'Dummyfull_data'
+output_folder = 'Added_Missing_Timestamps'
 log_folder = output_folder
 os.makedirs(output_folder, exist_ok=True)
 
@@ -13,8 +13,8 @@ target_sites = ['updated_ELST.csv', 'updated_LXGN.csv']
 # Desired column order
 desired_order = [
     'NetSiteAbbrev', 'County', 'UTCTimestampCollected', 'TAIR', 'DWPT', 'PRCP',
-    'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD', 'VT05',
-    'SM02', 'SM04', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
+    'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD','WDSD','WSSD',
+    'SM02', 'SM04','ST02', 'ST04','VT05', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
 ]
 
 # Function to process each site
@@ -23,7 +23,7 @@ for filename in target_sites:
         site_path = os.path.join(input_folder, filename)
         site_name = filename.replace("updated_", "").replace(".csv", "")
 
-        print(f"\n🔄 Processing {site_name}...")
+        print(f"\nProcessing {site_name}...")
 
         # Load the cleaned CSV
         df = pd.read_csv(site_path, parse_dates=["UTCTimestampCollected"])
@@ -40,7 +40,7 @@ for filename in target_sites:
         rows_expected = len(expected_index)
 
         # Fill only real gaps (limit 6 forward steps) BEFORE inserting timestamps
-        df[["SM02", "SM04"]] = df[["SM02", "SM04"]].ffill(limit=6)
+        # df[["SM02", "SM04"]] = df[["SM02", "SM04"]].ffill(limit=6)
 
         # Now reindex to insert missing timestamps (they remain NaN)
         df_full = df.reindex(expected_index)
@@ -62,12 +62,12 @@ for filename in target_sites:
             df_full = df_full[desired_order]
         else:
             missing = [col for col in desired_order if col not in df_full.columns]
-            print(f"⚠️ Missing columns in {filename}: {missing}. Columns will not be reordered.")
+            print(f"Missing columns in {filename}: {missing}. Columns will not be reordered.")
 
         # Save the completed CSV
         output_csv_path = os.path.join(output_folder, f"{site_name}_complete.csv")
         df_full.to_csv(output_csv_path, index=False)
-        print(f"✅ Saved completed CSV: {output_csv_path}")
+        print(f"Saved completed CSV: {output_csv_path}")
 
         # Prepare the log text
         rows_added = len(expected_index.difference(df.index))
@@ -88,10 +88,10 @@ for filename in target_sites:
         with open(log_path, 'w') as log_file:
             for line in report_lines:
                 log_file.write(line + '\n')
-        print(f"📄 Log saved: {log_path}")
+        print(f"Log saved: {log_path}")
 
         # Print summary to terminal
         print("\n".join(report_lines))
 
     except Exception as e:
-        print(f"❌ Failed to process {filename}: {e}")
+        print(f"Failed to process {filename}: {e}")

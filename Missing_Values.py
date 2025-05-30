@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-input_folder = "b"
+input_folder = "Original_data"
 output_folder = "Missing_vales_CSV"
 os.makedirs(output_folder, exist_ok=True)
 

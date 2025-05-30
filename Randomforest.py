@@ -5,15 +5,15 @@ from sklearn.impute import SimpleImputer
 from datetime import datetime
 
 # --- Folders ---
-input_folder = 'Dummyfull_data'
+input_folder = 'Testing'
 output_folder = 'RandomForest_Regression'
 os.makedirs(output_folder, exist_ok=True)
 
 # --- Desired column order ---
 desired_order = [
     'NetSiteAbbrev', 'County', 'UTCTimestampCollected', 'TAIR', 'DWPT', 'PRCP',
-    'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD', 'VT05',
-    'SM02', 'SM04', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
+    'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD','WDSD','WSSD',
+    'SM02', 'SM04','ST02', 'ST04','VT05', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
 ]
 
 # --- Get all CSV files ---
@@ -41,16 +41,16 @@ for file in csv_files:
     missing_counts = df[numeric_cols].isna().sum()
     missing_columns = missing_counts[missing_counts > 0]
 
-    print(f"\n📊 Missing summary (Total rows: {total_rows}):")
+    print(f"\nMissing summary (Total rows: {total_rows}):")
     if missing_columns.empty:
-        print("✅ No missing values found.")
+        print("No missing values found.")
         continue
 
     for col, count in missing_columns.items():
         print(f"{col:<20} -----> {count}")
 
     for col_to_process in missing_columns.index:
-        print(f"\n🔧 Processing column: {col_to_process}")
+        print(f"\nProcessing column: {col_to_process}")
         target = col_to_process
         features = [c for c in numeric_cols if c != target]
 
@@ -59,7 +59,7 @@ for file in csv_files:
         test_df = df_rf[df_rf[target].isna()].drop(columns=[target])
 
         if train_df.empty or test_df.empty:
-            print(f"⚠️ Skipping {target}: Not enough data.")
+            print(f"Skipping {target}: Not enough data.")
             continue
 
         X_train = train_df[features]
@@ -88,7 +88,7 @@ for file in csv_files:
         feature_info = "\n".join([f"    {feat}: {round(imp, 4)}" for feat, imp in zip(features, importance)])
         changes_log.append(f"\n📈 Feature importance for {target}:\n{feature_info}")
 
-        print(f"✅ Filled {len(y_pred)} values in '{target}' using Random Forest.")
+        print(f"Filled {len(y_pred)} values in '{target}' using Random Forest.")
 
     # Save updated file and log
     df_reset = df.reset_index()
@@ -98,15 +98,15 @@ for file in csv_files:
         df_reset = df_reset[desired_order]
     else:
         missing_cols = [col for col in desired_order if col not in df_reset.columns]
-        print(f"⚠️ Missing columns in file: {missing_cols}. Will skip reordering.")
+        print(f"Missing columns in file: {missing_cols}. Will skip reordering.")
 
     output_csv = os.path.join(output_folder, f"{site_name}.csv")
     df_reset.to_csv(output_csv, index=False, float_format="%.4f")
-    print(f"✅ CSV saved: {output_csv}")
+    print(f"CSV saved: {output_csv}")
 
     log_file = os.path.join(output_folder, f"{site_name}.txt")
     with open(log_file, 'w', encoding='utf-8') as log:
         log.write(f"Random Forest interpolation log for {site_name}\nGenerated: {datetime.now()}\n\n")
         for entry in changes_log:
             log.write(entry + "\n")
-    print(f"📝 Log saved: {log_file}")
+    print(f"Log saved: {log_file}")
