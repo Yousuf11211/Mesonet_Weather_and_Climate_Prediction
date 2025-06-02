@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # --- CONFIG ---
-input_folder = "filtered_data"
+input_folder = "with_soil"
 output_folder = "filled_timestamps"
 os.makedirs(output_folder, exist_ok=True)
 

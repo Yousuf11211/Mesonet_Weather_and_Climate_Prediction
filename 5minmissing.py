@@ -2,8 +2,8 @@ import pandas as pd
 import os
 
 # --- CONFIGURATION ---
-input_folder = 'Dummyfull_data'
-target_file = 'ELST_complete.csv'  # Change as needed
+input_folder = 'without_soil'
+target_file = 'ELST.csv'  # Change as needed
 file_path = os.path.join(input_folder, target_file)
 
 # --- Load data ---
