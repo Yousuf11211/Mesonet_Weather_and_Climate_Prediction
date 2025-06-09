@@ -28,13 +28,12 @@ print(f"Expected timestamps (5-min): {len(expected_index)}")
 print(f"Actual timestamps          : {len(df)}")
 print(f"Missing timestamps         : {len(missing)}")
 
-# --- Optionally print some examples ---
 if len(missing) > 0:
     print("\nFirst 10 missing timestamps:")
     for ts in missing[:10]:
         print(f" - {ts}")
 
-# --- Optional: Save to file ---
+# --- Save to file ---
 output_folder = "missing_timestamp_logs"
 os.makedirs(output_folder, exist_ok=True)
 site_name = target_file.replace(".csv", "")
