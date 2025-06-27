@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # --- CONFIGURATION ---
-input_folder = 'without_soil'
+input_folder = 'filled_timestamps'
 target_file = 'ELST.csv'  # Change as needed
 file_path = os.path.join(input_folder, target_file)
 
