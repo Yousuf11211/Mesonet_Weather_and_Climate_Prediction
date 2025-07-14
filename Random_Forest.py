@@ -8,9 +8,10 @@ from sklearn.impute import SimpleImputer
 
 # --- CONFIG ---
 input_file = 'filled_timestamps/ELST.csv'
-case1_output = 'output_case1.csv'
-case2_output = 'output_case2.csv'
-plot_file = 'Random_Forest/feature_importance.png'
+output_folder = 'Random_Forest'
+case1_output = os.path.join(output_folder, 'ELST_case1_all.csv')
+case2_output = os.path.join(output_folder, 'ELST_case2_skip_large.csv')
+plot_file = os.path.join(output_folder, 'ELST_feature_importance.png')
 gap_threshold = timedelta(days=30)
 
 # --- Columns ---
@@ -19,12 +20,15 @@ all_vars = [
     'WDSD', 'WSSD', 'SM02', 'SM04', 'ST02', 'ST04', 'VT05', 'VT20', 'VT90',
     'VR05', 'VR20', 'VR90'
 ]
-targets = ['VT20', 'VT90']
 correct_order = [
     'NetSiteAbbrev', 'County', 'UTCTimestampCollected'
 ] + all_vars
+targets_for_plot = ['VT20', 'VT90']
 
-# --- Load ---
+# --- Ensure output folder ---
+os.makedirs(output_folder, exist_ok=True)
+
+# --- Load Data ---
 df = pd.read_csv(input_file, parse_dates=['UTCTimestampCollected'])
 df.set_index('UTCTimestampCollected', inplace=True)
 df.sort_index(inplace=True)
@@ -44,10 +48,10 @@ def find_gaps(series):
         gaps.append((start, len(series) - 1))
     return gaps
 
-# --- Model Filling ---
+# --- Gap Filling ---
 def fill_gaps(df_in, allow_large=True):
     df = df_in.copy()
-    for target in targets:
+    for target in all_vars:
         print(f"[FILLING] {target} using RandomForest (allow_large={allow_large})")
         features = [col for col in all_vars if col != target]
         complete_data = df[features + [target]].dropna()
@@ -71,10 +75,10 @@ def fill_gaps(df_in, allow_large=True):
             df.iloc[start:end+1, df.columns.get_loc(target)] = preds
     return df
 
-# --- Feature Importance ---
+# --- Feature Importance Plot ---
 def plot_feature_importance(df):
     importance_dict = {}
-    for target in targets:
+    for target in targets_for_plot:
         features = [col for col in all_vars if col != target]
         data = df[features + [target]].dropna()
         if data.empty:
@@ -108,7 +112,6 @@ df_case2 = fill_gaps(df, allow_large=False)
 
 df_case1.reset_index(inplace=True)
 df_case2.reset_index(inplace=True)
-
 df_case1 = df_case1[correct_order]
 df_case2 = df_case2[correct_order]
 
@@ -117,7 +120,7 @@ df_case2.to_csv(case2_output, index=False, float_format="%.4f")
 
 plot_feature_importance(df_case1)
 
-print("✅ Finished filling. Outputs saved:")
-print(f"  - {case1_output}")
-print(f"  - {case2_output}")
-print(f"  - {plot_file}")
+print("✅ Finished filling ALL variables with RandomForest.")
+print(f"🔹 Case 1 (full fill): {case1_output}")
+print(f"🔹 Case 2 (skip large): {case2_output}")
+print(f"📊 Feature Plot saved to: {plot_file}")
