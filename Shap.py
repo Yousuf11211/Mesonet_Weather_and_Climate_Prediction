@@ -1,87 +1,96 @@
 import os
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
 import shap
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-# --- CONFIG ---
-input_folder = 'New_Random_Forest'          # Folder with CSVs
-output_folder = 'SHAP_Feature_Plots_Full'   # Output folder
-targets = ['VT20', 'VT90']
-all_vars = [
-    'TAIR', 'DWPT', 'PRCP', 'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD',
-    'WDSD', 'WSSD', 'SM02', 'SM04', 'ST02', 'ST04', 'VT05', 'VT20', 'VT90',
-    'VR05', 'VR20', 'VR90'
-]
-batch_size = 1000
+from sklearn.ensemble import RandomForestRegressor
 
-os.makedirs(output_folder, exist_ok=True)
+# --- CONFIGURATION ---
+root_folder = 'Random_Forest'
+target_features = ['VT90_TAIR_diff', 'VT90_VT20_diff']
 
-def compute_shap_for_target(X, y, site_name, target):
-    print(f"  → Training RandomForest for {target} on {len(X)} rows...")
-    imp = SimpleImputer(strategy='mean')
-    X_imp = imp.fit_transform(X)
+# --- UTILITY FUNCTION ---
+def generate_shap_summary_plots(csv_path, save_dir, target):
+    print(f"Reading CSV file: {csv_path}")
+    df = pd.read_csv(csv_path)
 
-    model = RandomForestRegressor(n_estimators=25, max_depth=10, random_state=42, n_jobs=-1)
-    model.fit(X_imp, y)
+    # Add difference columns if not present
+    if 'VT90_TAIR_diff' not in df.columns and 'VT90' in df.columns and 'TAIR' in df.columns:
+        print("Adding column: VT90_TAIR_diff")
+        df['VT90_TAIR_diff'] = df['VT90'] - df['TAIR']
+    if 'VT90_VT20_diff' not in df.columns and 'VT90' in df.columns and 'VT20' in df.columns:
+        print("Adding column: VT90_VT20_diff")
+        df['VT90_VT20_diff'] = df['VT90'] - df['VT20']
 
-    explainer = shap.TreeExplainer(model)
+    if target not in df.columns:
+        print(f"Target column '{target}' not found in {csv_path}. Skipping this target.")
+        return
 
-    shap_sum = np.zeros(X.shape[1])
-    total_rows = len(X)
+    print(f"Dropping rows with NA in target column '{target}'")
+    df = df.dropna(subset=[target])
+    print(f"Remaining rows after dropping NA in target: {len(df)}")
 
-    for start in range(0, total_rows, batch_size):
-        end = min(start + batch_size, total_rows)
-        batch_X = X_imp[start:end]
-        print(f"    → SHAP calculating rows {start} to {end}...")
+    X = df.drop(columns=[target])
+    y = df[target]
 
-        shap_values = explainer.shap_values(batch_X)
-        shap_sum += np.abs(shap_values).sum(axis=0)
+    # Drop non-numeric columns and columns with any NA values
+    print("Selecting numeric columns and dropping columns with NA in features")
+    X = X.select_dtypes(include=['number']).dropna(axis=1)
+    print(f"Features considered for model training: {list(X.columns)}")
 
-    shap_mean = shap_sum / total_rows
-    sorted_idx = np.argsort(shap_mean)[::-1]
-    sorted_features = np.array(X.columns)[sorted_idx]
-    sorted_importance = shap_mean[sorted_idx]
+    if len(X.columns) < 2:
+        print(f"Not enough numeric features to compute SHAP for target '{target}' in {csv_path}. Need at least 2.")
+        return
 
-    plt.figure(figsize=(12, 6))
-    plt.bar(range(len(sorted_features)), sorted_importance, color='skyblue')
-    plt.xticks(range(len(sorted_features)), sorted_features, rotation=45, ha='right')
-    plt.title(f"{site_name} – SHAP Feature Importance for {target}")
+    print(f"Training RandomForestRegressor model for target '{target}'")
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+    print("Model training completed")
+
+    print("Initializing SHAP explainer")
+    explainer = shap.Explainer(model, X)
+
+    sample_size = min(len(X), 200)
+    print(f"Sampling {sample_size} rows from data for SHAP computation")
+    X_sample = X.sample(sample_size, random_state=42)
+
+    print("Calculating SHAP values")
+    shap_values = explainer(X_sample)
+    print("SHAP values calculation done")
+
+    print("Generating SHAP summary plot")
+    plt.figure(figsize=(10, 8))
+    shap.summary_plot(shap_values, X_sample, plot_type="dot", show=False)
+    plt.title(f"SHAP Summary Plot for {target}")
     plt.tight_layout()
 
-    plot_path = os.path.join(output_folder, f"{site_name}_{target}_shap_full.png")
-    plt.savefig(plot_path)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{target}_shap_beeswarm.png")
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
+    print(f"Saved SHAP summary plot to: {save_path}")
 
-    print(f"  ✔ SHAP plot saved: {plot_path}")
 
-# --- Main Loop ---
-for file in os.listdir(input_folder):
-    if not file.endswith('.csv'):
+# --- MAIN SCRIPT ---
+print(f"Starting SHAP summary plot generation in root folder: '{root_folder}'")
+for site_folder in os.listdir(root_folder):
+    site_path = os.path.join(root_folder, site_folder)
+    if not os.path.isdir(site_path):
+        print(f"Skipping non-directory item: {site_path}")
         continue
 
-    file_path = os.path.join(input_folder, file)
-    site_name = os.path.splitext(file)[0]
-
-    print(f"\n[SHAP] Processing {file}...")
-
-    df = pd.read_csv(file_path, parse_dates=['UTCTimestampCollected'])
-    df = df[all_vars].dropna()
-
-    if df.empty:
-        print(f"  ❌ Skipped (no complete rows after dropna).")
+    csv_path = os.path.join(site_path, "ELST.csv")
+    if not os.path.exists(csv_path):
+        print(f"ELST.csv not found in {site_path}, skipping this site")
         continue
 
-    for target in targets:
-        if target not in df.columns:
-            print(f"  ❌ Target {target} missing in data.")
-            continue
+    print(f"\nProcessing site folder: {site_folder}")
+    shap_save_dir = os.path.join(site_path, "shap_summary")
 
-        X = df.drop(columns=targets, errors='ignore')
-        y = df[target]
+    for target in target_features:
+        print(f"Processing target feature: {target}")
+        generate_shap_summary_plots(csv_path, shap_save_dir, target)
 
-        compute_shap_for_target(X, y, site_name, target)
-
-print("\n✅ SHAP Full-Dataset Batch Processing Completed.")
+print("\nAll SHAP summary plots have been generated.")
