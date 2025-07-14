@@ -1,112 +1,162 @@
-import pandas as pd
 import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
-from datetime import datetime
 
-# --- Folders ---
-input_folder = 'Testing'
-output_folder = 'RandomForest_Regression'
-os.makedirs(output_folder, exist_ok=True)
+# ------------- CONFIG -------------
+input_folder = 'Gap_Deleted_CSVs'
+output_root = 'Random_Forest'
+os.makedirs(output_root, exist_ok=True)
 
-# --- Desired column order ---
-desired_order = [
-    'NetSiteAbbrev', 'County', 'UTCTimestampCollected', 'TAIR', 'DWPT', 'PRCP',
-    'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD','WDSD','WSSD',
-    'SM02', 'SM04','ST02', 'ST04','VT05', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
+original_column_order = [
+    'NetSiteAbbrev', 'County', 'UTCTimestampCollected',
+    'TAIR', 'DWPT', 'PRCP', 'PRES', 'RELH', 'SRAD',
+    'WDIR', 'WSPD', 'WDSD', 'WSSD',
+    'SM02', 'SM04', 'ST02', 'ST04',
+    'VT05', 'VT20', 'VT90',
+    'VR05', 'VR20', 'VR90'
 ]
 
-# --- Get all CSV files ---
-csv_files = [f for f in os.listdir(input_folder) if f.endswith('.csv')]
+non_numeric_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
 
-for file in csv_files:
-    print(f"\n🔍 Processing file: {file}")
-    file_path = os.path.join(input_folder, file)
-    df = pd.read_csv(file_path, parse_dates=["UTCTimestampCollected"])
+# ------------- FUNCTION TO FILL MISSING AND PLOT IMPORTANCE -------------
+def fill_missing_values(df, filename, site_folder):
+    filled_stats = {}
+    per_variable_summary = {}
 
-    # Ensure consistent datetime index
-    df["UTCTimestampCollected"] = pd.to_datetime(df["UTCTimestampCollected"])
-    df.set_index("UTCTimestampCollected", inplace=True)
-    df.sort_index(inplace=True)
-    total_rows = len(df)
+    numeric_cols = [col for col in df.columns if col not in non_numeric_cols]
 
-    # Get site name from data
-    site_name = df["NetSiteAbbrev"].dropna().unique()
-    site_name = site_name[0] if len(site_name) > 0 else file.replace('.csv', '')
+    if 'UTCTimestampCollected' in df.columns:
+        try:
+            df['UTCTimestampCollected'] = pd.to_datetime(df['UTCTimestampCollected'], errors='coerce')
+            df['Hour'] = df['UTCTimestampCollected'].dt.hour
+            df['Month'] = df['UTCTimestampCollected'].dt.month
+            df['DayOfYear'] = df['UTCTimestampCollected'].dt.dayofyear
+        except Exception as e:
+            print(f"Timestamp conversion failed: {e}")
 
-    changes_log = []
-    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    drop_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
+    meta_data = df[drop_cols].copy() if all(col in df.columns for col in drop_cols) else pd.DataFrame()
+    df = df.drop(columns=[col for col in drop_cols if col in df.columns], errors='ignore')
 
-    # Impute all columns with missing data
-    missing_counts = df[numeric_cols].isna().sum()
-    missing_columns = missing_counts[missing_counts > 0]
+    for target_col in numeric_cols:
+        missing_count = df[target_col].isnull().sum()
+        total_count = len(df)
 
-    print(f"\nMissing summary (Total rows: {total_rows}):")
-    if missing_columns.empty:
-        print("No missing values found.")
-        continue
-
-    for col, count in missing_columns.items():
-        print(f"{col:<20} -----> {count}")
-
-    for col_to_process in missing_columns.index:
-        print(f"\nProcessing column: {col_to_process}")
-        target = col_to_process
-        features = [c for c in numeric_cols if c != target]
-
-        df_rf = df[features + [target]].copy()
-        train_df = df_rf.dropna()
-        test_df = df_rf[df_rf[target].isna()].drop(columns=[target])
-
-        if train_df.empty or test_df.empty:
-            print(f"Skipping {target}: Not enough data.")
+        if missing_count == 0:
+            filled_stats[target_col] = 0
+            per_variable_summary[target_col + '_R2'] = 'NA'
+            per_variable_summary[target_col + '_Top3'] = 'NA'
             continue
 
-        X_train = train_df[features]
-        y_train = train_df[target]
+        feature_cols = [col for col in df.columns if col != target_col]
 
-        imp = SimpleImputer(strategy='mean')
-        X_train_imp = imp.fit_transform(X_train)
-        X_test_imp = imp.transform(test_df)
+        train_df = df[df[target_col].notnull()]
+        predict_df = df[df[target_col].isnull()]
 
-        model = RandomForestRegressor(
-            n_estimators=100,
-            random_state=42,
-            n_jobs=-1,
-            verbose=0
-        )
-        model.fit(X_train_imp, y_train)
-        y_pred = model.predict(X_test_imp)
+        if train_df.empty or predict_df.empty:
+            filled_stats[target_col] = 0
+            per_variable_summary[target_col + '_R2'] = 'NA'
+            per_variable_summary[target_col + '_Top3'] = 'NA'
+            continue
 
-        for idx, ts in enumerate(test_df.index):
-            pred_value = round(y_pred[idx], 4)
-            df.loc[ts, target] = pred_value
-            changes_log.append(f"{target} filled at {ts} | previous: NaN → new: {pred_value}")
+        X_train = train_df[feature_cols]
+        y_train = train_df[target_col]
+        X_pred = predict_df[feature_cols]
 
-        # Add feature importance summary
-        importance = model.feature_importances_
-        feature_info = "\n".join([f"    {feat}: {round(imp, 4)}" for feat, imp in zip(features, importance)])
-        changes_log.append(f"\n📈 Feature importance for {target}:\n{feature_info}")
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
 
-        print(f"Filled {len(y_pred)} values in '{target}' using Random Forest.")
+        train_score = model.score(X_train, y_train)
 
-    # Save updated file and log
-    df_reset = df.reset_index()
+        y_pred = model.predict(X_pred)
+        df.loc[df[target_col].isnull(), target_col] = y_pred
+
+        importances = model.feature_importances_
+        importance_percent = 100 * importances / importances.sum()
+
+        sorted_idx = np.argsort(importance_percent)[::-1]
+        sorted_features = [feature_cols[i] for i in sorted_idx]
+        sorted_importance = [importance_percent[i] for i in sorted_idx]
+
+        top_features = list(zip(sorted_features, np.round(sorted_importance, 2)))[:3]
+        top_features_str = "; ".join([f"{f}: {imp}%" for f, imp in top_features])
+
+        per_variable_summary[target_col + '_R2'] = round(train_score, 3)
+        per_variable_summary[target_col + '_Top3'] = top_features_str
+
+        # Plot and save
+        plt.figure(figsize=(12, 6))
+        plt.bar(sorted_features, sorted_importance)
+        plt.ylabel('Importance (%)')
+        plt.title(f'Feature Importance for {target_col}')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+
+        plot_path = os.path.join(site_folder, f"{target_col}.png")
+        plt.savefig(plot_path)
+        plt.close()
+
+        filled_percent = (missing_count / total_count) * 100
+        filled_stats[target_col] = round(filled_percent, 2)
+
+    # Reattach metadata
+    if not meta_data.empty:
+        df = pd.concat([meta_data.reset_index(drop=True), df.reset_index(drop=True)], axis=1)
 
     # Reorder columns
-    if all(col in df_reset.columns for col in desired_order):
-        df_reset = df_reset[desired_order]
-    else:
-        missing_cols = [col for col in desired_order if col not in df_reset.columns]
-        print(f"Missing columns in file: {missing_cols}. Will skip reordering.")
+    df = df[[col for col in original_column_order if col in df.columns]]
 
-    output_csv = os.path.join(output_folder, f"{site_name}.csv")
-    df_reset.to_csv(output_csv, index=False, float_format="%.4f")
-    print(f"CSV saved: {output_csv}")
+    # Merge summaries
+    summary_row = {**filled_stats, **per_variable_summary}
+    return df, summary_row
 
-    log_file = os.path.join(output_folder, f"{site_name}.txt")
-    with open(log_file, 'w', encoding='utf-8') as log:
-        log.write(f"Random Forest interpolation log for {site_name}\nGenerated: {datetime.now()}\n\n")
-        for entry in changes_log:
-            log.write(entry + "\n")
-    print(f"Log saved: {log_file}")
+# ------------- MAIN SCRIPT -------------
+print("Starting batch processing of CSV files...")
+summary_stats = []
+
+for filename in os.listdir(input_folder):
+    if filename.endswith('.csv'):
+        file_path = os.path.join(input_folder, filename)
+        print(f"\nProcessing file: {filename}")
+
+        try:
+            df = pd.read_csv(file_path)
+            site_name = os.path.splitext(filename)[0]
+            site_folder = os.path.join(output_root, site_name)
+            os.makedirs(site_folder, exist_ok=True)
+
+            print(f"Loaded {filename}: {len(df)} rows")
+
+            filled_df, stats = fill_missing_values(df, filename, site_folder)
+
+            output_csv_path = os.path.join(site_folder, "ELST.csv")
+            filled_df.to_csv(output_csv_path, index=False)
+            print(f"Saved filled CSV to {output_csv_path}")
+
+            stats['filename'] = filename
+            summary_stats.append(stats)
+
+            # Save report.txt for the site
+            report_path = os.path.join(site_folder, "report.txt")
+            with open(report_path, "w") as f:
+                f.write(f"Report for {filename}\n\n")
+                for key, value in stats.items():
+                    if key != 'filename':
+                        f.write(f"{key}: {value}\n")
+            print(f"Saved report to {report_path}")
+
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
+
+# ------------- SAVE OVERALL SUMMARY -------------
+if summary_stats:
+    summary_df = pd.DataFrame(summary_stats)
+    summary_csv_path = os.path.join(output_root, 'filling_summary.csv')
+    summary_df.to_csv(summary_csv_path, index=False)
+    print(f"\nSummary report saved: {summary_csv_path}")
+else:
+    print("\nNo files were processed successfully.")
+
+print("All tasks completed.")
