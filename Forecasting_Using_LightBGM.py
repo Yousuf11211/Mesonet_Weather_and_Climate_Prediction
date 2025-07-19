@@ -154,16 +154,23 @@ for site_folder in os.listdir(base_dir):
 
                     predictions = multi_model.predict(X_test_mo)
 
+                    # Save evaluation for multi-output model
                     for i, target in enumerate(target_variables):
                         mae = mean_absolute_error(y_test_mo[target], predictions[:, i])
                         r2 = r2_score(y_test_mo[target], predictions[:, i])
                         accuracy_pct = r2 * 100
+
+                        print(f"    [Multi-output] {target} MAE: {mae:.3f}")
+                        print(f"    [Multi-output] {target} R² Score: {r2:.3f}")
+                        print(f"    [Multi-output] {target} Approx. Accuracy: {accuracy_pct:.2f}%")
 
                         report_lines.append(f"[Multi-output] Target Variable: {target}")
                         report_lines.append(f"MAE: {mae:.4f}")
                         report_lines.append(f"R² Score: {r2:.4f}")
                         report_lines.append(f"Approx. Accuracy: {accuracy_pct:.2f}%")
                         report_lines.append("-" * 50)
+
+                    # (Optional) Add multi-output plots here if you want
 
                 else:
                     print("    One or both target variables missing – skipping multi-output.")
