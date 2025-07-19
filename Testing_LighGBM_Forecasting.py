@@ -79,13 +79,15 @@ for model_type in model_types:
                     print(f"    Unknown model name {model_name}, skipping.")
                     continue
 
-                # Check features match model training (optional but recommended)
-                if hasattr(model, 'feature_name'):
-                    model_features = model.feature_name()
+                if hasattr(model, 'feature_name_'):
+                    model_features = model.feature_name_
                 elif hasattr(model, 'estimators_'):
                     # For MultiOutputRegressor, get feature names from base estimator
                     base_estimator = model.estimators_[0]
-                    model_features = base_estimator.feature_name()
+                    if hasattr(base_estimator, 'feature_name_'):
+                        model_features = base_estimator.feature_name_
+                    else:
+                        model_features = None
                 else:
                     model_features = None
 
