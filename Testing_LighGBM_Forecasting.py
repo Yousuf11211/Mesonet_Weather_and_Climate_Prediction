@@ -18,26 +18,20 @@ print("Starting model evaluation...\n")
 for model_type in model_types:
     print(f"--- MODEL TYPE: {model_type} ---")
     for site in sites:
-        # Compose path to model folder for this site & type
         model_site_dir = os.path.join(base_model_dir, model_type, site)
         if not os.path.exists(model_site_dir):
             print(f"  Model directory not found for {site} under {model_type}, skipping.")
             continue
 
-        # Compose path to CSV data file
         data_folder = f"{site}_no_long_gaps"
         csv_path = os.path.join(base_data_dir, data_folder, f"{site}.csv")
         if not os.path.exists(csv_path):
             print(f"  Data file missing for {site} at {csv_path}, skipping.")
             continue
 
-        # Load the CSV data
-        df = pd.read_csv(csv_path)
-        print(f"  Loaded data for {site}, {len(df)} rows.")
-
         errors = {}
 
-        # Sort model files to process in consistent order
+        # Sort model files for consistent order
         for model_file in sorted(os.listdir(model_site_dir)):
             if not model_file.endswith('.pkl'):
                 continue
@@ -50,12 +44,15 @@ for model_type in model_types:
                 print(f"    Failed to load model {model_file}: {e}")
                 continue
 
+            # Reload full data fresh for each model
+            df = pd.read_csv(csv_path)
+            print(f"  Loaded data for {site} ({len(df)} rows) to evaluate model {model_name}")
+
             try:
                 if model_name == 'VT20':
                     if 'VT20' not in df.columns:
                         print(f"    VT20 column missing in data, skipping model {model_name}")
                         continue
-                    # Drop only VT20 + metadata columns
                     features = df.drop(columns=drop_cols + ['VT20'], errors='ignore')
                     target = df['VT20']
 
@@ -63,7 +60,6 @@ for model_type in model_types:
                     if 'VT90' not in df.columns:
                         print(f"    VT90 column missing in data, skipping model {model_name}")
                         continue
-                    # Drop only VT90 + metadata columns
                     features = df.drop(columns=drop_cols + ['VT90'], errors='ignore')
                     target = df['VT90']
 
@@ -71,7 +67,7 @@ for model_type in model_types:
                     if 'VT20' not in df.columns or 'VT90' not in df.columns:
                         print(f"    VT20 or VT90 columns missing for multi-output model, skipping {model_name}")
                         continue
-                    # For multi-output, drop only metadata columns
+                    # For multi-output drop metadata only (keep both targets)
                     features = df.drop(columns=drop_cols, errors='ignore')
                     target = df[['VT20', 'VT90']]
 
@@ -79,10 +75,10 @@ for model_type in model_types:
                     print(f"    Unknown model name {model_name}, skipping.")
                     continue
 
+                # Get feature names from model (if possible) to reorder inputs
                 if hasattr(model, 'feature_name_'):
                     model_features = model.feature_name_
                 elif hasattr(model, 'estimators_'):
-                    # For MultiOutputRegressor, get feature names from base estimator
                     base_estimator = model.estimators_[0]
                     if hasattr(base_estimator, 'feature_name_'):
                         model_features = base_estimator.feature_name_
@@ -99,7 +95,6 @@ for model_type in model_types:
                     if extra_feats:
                         print(f"    WARNING: Extra features in data for model {model_name}: {extra_feats}")
 
-                    # Reorder columns exactly to match training order, ignore missing columns for safety
                     features = features.reindex(columns=model_features, fill_value=0)
 
                 preds = model.predict(features)
