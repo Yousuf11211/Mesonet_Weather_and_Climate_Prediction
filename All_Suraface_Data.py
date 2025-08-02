@@ -1,60 +1,77 @@
-from herbie import Herbie  # <-- Correct import for HRRR downloader
+from herbie import Herbie
 import pygrib
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-# ---------------- CONFIG ----------------
 date_to_download = datetime(2025, 1, 29)  # Change date here
-output_csv = Path(__file__).parent / f"HRRR_Surface_AllVars_{date_to_download.strftime('%Y%m%d')}.csv"
+output_csv = Path(__file__).parent / f"HRRR_Surface_5min_AllVars_{date_to_download.strftime('%Y%m%d')}.csv"
 
-# Create empty list to collect data dictionaries
-all_data = []
+forecast_steps = list(range(0, 60, 5))  # every 5 minutes (0,5,10,...55)
 
-# Loop through 24 hours of the day
+all_times_data = []  # collect all data here
+
 for hour in range(24):
-    run_time = date_to_download.replace(hour=hour)
-    print(f"Downloading HRRR surface for {run_time}...")
+    run_time = date_to_download.replace(hour=hour, minute=0)
+    print(f"Processing run time: {run_time}")
 
-    try:
-        H = Herbie(
-            run_time.strftime("%Y-%m-%d %H:%M"),
-            model="hrrr",
-            product="sfc",
-            fxx=0,  # Analysis data
-            save_dir=Path(__file__).parent / "HRRR_Downloads"
-        )
+    for fxx_min in forecast_steps:
+        try:
+            H = Herbie(
+                run_time.strftime("%Y-%m-%d %H:%M"),
+                model="hrrr",
+                product="sfc",
+                fxx=fxx_min,
+                save_dir=Path(__file__).parent / "HRRR_Downloads"
+            )
 
-        # Download the GRIB2 file if not exists
-        grib_path = H.get_localFilePath()
-        if not grib_path.exists():
-            H.download()
+            grib_path = H.get_localFilePath()
+            if not grib_path.exists():
+                H.download()
 
-        # Read all variables from the GRIB2 file
-        grbs = pygrib.open(str(grib_path))
-        data_dict = {"datetime": run_time}
+            grbs = pygrib.open(str(grib_path))
 
-        # Iterate over all messages (variables) in the grib file
-        for grb in grbs:
-            short_name = grb.shortName
-            level = grb.level
+            dfs = []
+            lat_lon_df = None
 
-            # Create a unique column name for each variable+level
-            col_name = f"{short_name}_{level}"
+            for grb in grbs:
+                short_name = grb.shortName
+                level = grb.level
+                col_name = f"{short_name}_{level}"
 
-            # Calculate mean value over grid points (you can change this to other aggregates)
-            values_mean = grb.values.mean()
-            data_dict[col_name] = values_mean
+                lats, lons = grb.latlons()
+                values = grb.values
 
-        grbs.close()
-        all_data.append(data_dict)
+                # Create lat/lon DataFrame once
+                if lat_lon_df is None:
+                    lat_lon_df = pd.DataFrame({
+                        "latitude": lats.flatten(),
+                        "longitude": lons.flatten()
+                    })
 
-    except Exception as e:
-        print(f"Error downloading/converting {run_time}: {e}")
+                # Create DataFrame for this variable's values (flattened)
+                var_df = pd.DataFrame(values.flatten(), columns=[col_name])
 
-# Combine all hourly data into a DataFrame
-df = pd.DataFrame(all_data)
+                dfs.append(var_df)
 
-# Save the DataFrame to CSV in the script directory
-df.to_csv(output_csv, index=False)
-print(f"\n✅ Download complete. CSV saved at:\n{output_csv}")
+            grbs.close()
+
+            # Concatenate all variable columns horizontally
+            vars_df = pd.concat(dfs, axis=1)
+
+            # Combine lat/lon and vars
+            full_df = pd.concat([lat_lon_df, vars_df], axis=1)
+            full_df['datetime'] = run_time + pd.Timedelta(minutes=fxx_min)
+
+            all_times_data.append(full_df)
+
+        except Exception as e:
+            print(f"Error processing {run_time} fxx={fxx_min}: {e}")
+
+# Combine all times vertically
+final_df = pd.concat(all_times_data, ignore_index=True)
+
+# Save to one big CSV
+final_df.to_csv(output_csv, index=False)
+
+print(f"\n✅ Download complete. All data saved in one CSV at:\n{output_csv}")
