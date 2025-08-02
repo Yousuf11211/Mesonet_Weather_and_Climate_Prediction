@@ -3,75 +3,81 @@ import pygrib
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+from multiprocessing import Pool, cpu_count
 
-date_to_download = datetime(2025, 1, 29)  # Change date here
-output_csv = Path(__file__).parent / f"HRRR_Surface_5min_AllVars_{date_to_download.strftime('%Y%m%d')}.csv"
+# ---------------- CONFIG ----------------
+date_to_download = datetime(2025, 1, 29)
+output_dir = Path(__file__).parent
+temp_dir = output_dir / "HRRR_Downloads"
+temp_dir.mkdir(exist_ok=True)
 
-forecast_steps = list(range(0, 60, 5))  # every 5 minutes (0,5,10,...55)
+hourly_csv = output_dir / f"HRRR_Surface_Hourly_{date_to_download.strftime('%Y%m%d')}.csv"
+interp_csv = output_dir / f"HRRR_Surface_5min_Interpolated_{date_to_download.strftime('%Y%m%d')}.csv"
 
-all_times_data = []  # collect all data here
+# ---------------- FUNCTION ----------------
+def download_hour(hour):
+    run_time = date_to_download.replace(hour=hour)
+    print(f"Downloading HRRR data for {run_time}...")
 
-for hour in range(24):
-    run_time = date_to_download.replace(hour=hour, minute=0)
-    print(f"Processing run time: {run_time}")
+    try:
+        H = Herbie(
+            run_time.strftime("%Y-%m-%d %H:%M"),
+            model="hrrr",
+            product="sfc",
+            fxx=0,
+            save_dir=temp_dir
+        )
 
-    for fxx_min in forecast_steps:
-        try:
-            H = Herbie(
-                run_time.strftime("%Y-%m-%d %H:%M"),
-                model="hrrr",
-                product="sfc",
-                fxx=fxx_min,
-                save_dir=Path(__file__).parent / "HRRR_Downloads"
-            )
-
+        grib_path = H.get_localFilePath()
+        if not grib_path or not Path(grib_path).exists():
+            print(f"File missing → downloading now...")
+            H.download()
             grib_path = H.get_localFilePath()
-            if not grib_path.exists():
-                H.download()
 
-            grbs = pygrib.open(str(grib_path))
+        if not grib_path or not Path(grib_path).exists():
+            print(f"No file for hour {hour}")
+            return None
 
-            dfs = []
-            lat_lon_df = None
+        grbs = pygrib.open(str(grib_path))
+        data = {"datetime": run_time}
 
-            for grb in grbs:
-                short_name = grb.shortName
-                level = grb.level
-                col_name = f"{short_name}_{level}"
+        for grb in grbs:
+            short_name = grb.shortName
+            human_name = grb.name.replace(" ", "_")
+            level = grb.level
 
-                lats, lons = grb.latlons()
-                values = grb.values
+            tech_col = f"{short_name}_{level}"
+            human_col = f"{human_name}_{level}"
 
-                # Create lat/lon DataFrame once
-                if lat_lon_df is None:
-                    lat_lon_df = pd.DataFrame({
-                        "latitude": lats.flatten(),
-                        "longitude": lons.flatten()
-                    })
+            mean_val = grb.values.mean()
+            data[tech_col] = mean_val
+            data[human_col] = mean_val
 
-                # Create DataFrame for this variable's values (flattened)
-                var_df = pd.DataFrame(values.flatten(), columns=[col_name])
+        grbs.close()
+        return pd.DataFrame([data])
 
-                dfs.append(var_df)
+    except Exception as e:
+        print(f"Error downloading hour {hour}: {e}")
+        return None
 
-            grbs.close()
+# ---------------- MAIN ----------------
+if __name__ == "__main__":
+    hours = list(range(24))
 
-            # Concatenate all variable columns horizontally
-            vars_df = pd.concat(dfs, axis=1)
+    with Pool(cpu_count()) as pool:
+        results = pool.map(download_hour, hours)
 
-            # Combine lat/lon and vars
-            full_df = pd.concat([lat_lon_df, vars_df], axis=1)
-            full_df['datetime'] = run_time + pd.Timedelta(minutes=fxx_min)
+    valid_results = [r for r in results if r is not None and not r.empty]
 
-            all_times_data.append(full_df)
+    if valid_results:
+        df = pd.concat(valid_results, ignore_index=True)
+        df.sort_values("datetime", inplace=True)
+        df.to_csv(hourly_csv, index=False)
+        print(f"Hourly CSV saved: {hourly_csv}")
 
-        except Exception as e:
-            print(f"Error processing {run_time} fxx={fxx_min}: {e}")
-
-# Combine all times vertically
-final_df = pd.concat(all_times_data, ignore_index=True)
-
-# Save to one big CSV
-final_df.to_csv(output_csv, index=False)
-
-print(f"\n✅ Download complete. All data saved in one CSV at:\n{output_csv}")
+        df.set_index("datetime", inplace=True)
+        df_5min = df.resample("5T").interpolate(method="linear")
+        df_5min.to_csv(interp_csv)
+        print(f"Interpolated 5-min CSV saved: {interp_csv}")
+    else:
+        print("No data downloaded successfully.")
