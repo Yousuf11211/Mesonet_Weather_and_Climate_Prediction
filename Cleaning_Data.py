@@ -13,14 +13,6 @@ os.makedirs(report_folder, exist_ok=True)
 
 delete_gap_threshold = timedelta(hours=6)
 
-all_vars = [
-    'TAIR', 'DWPT', 'PRCP', 'PRES', 'RELH', 'SRAD', 'WCHI', 'WDSD',
-    'WDIR', 'WSPD', 'WSMX', 'WSSD', 'SM02', 'SM04', 'ST02', 'ST04',
-    'VT05', 'VT20', 'VT90', 'VR05', 'VR30', 'VR90'
-]
-
-correct_order = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected'] + all_vars
-
 
 def find_gaps(series, index):
     """Find consecutive NaN gaps."""
@@ -45,7 +37,7 @@ def fill_missing_with_rf(df, target_col):
         features = df.drop(columns=[target_col])
         mask = df[target_col].notna()
         if mask.sum() == 0 or mask.sum() == len(df):
-            return df[target_col], filled_count  # Nothing to train or nothing to predict
+            return df[target_col], filled_count  # Nothing to train or predict
 
         X_train = features[mask]
         y_train = df.loc[mask, target_col]
@@ -70,8 +62,24 @@ for file in input_files:
     file_path = os.path.join(input_folder, file)
     print(f"\n🔷 Processing {file}...")
 
-    df = pd.read_csv(file_path, parse_dates=['UTCTimestampCollected'])
+    # --- Read CSV safely ---
+    df = pd.read_csv(file_path, dtype=str, low_memory=False, skiprows=[1])
+    df['UTCTimestampCollected'] = pd.to_datetime(
+        df['UTCTimestampCollected'],
+        errors='coerce',
+        infer_datetime_format=True
+    )
+    df = df.dropna(subset=['UTCTimestampCollected'])
     df.sort_values('UTCTimestampCollected', inplace=True)
+
+    # Identify all weather variable columns dynamically
+    static_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
+    all_vars = [c for c in df.columns if c not in static_cols]
+    correct_order = static_cols + all_vars
+
+    # Convert weather columns to numeric
+    for col in all_vars:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
 
     # --- 1️⃣ Add missing 5-min timestamps ---
     station_id_val = df['NetSiteAbbrev'].dropna().iloc[0]
@@ -79,14 +87,14 @@ for file in input_files:
 
     full_range = pd.date_range(df['UTCTimestampCollected'].min(),
                                df['UTCTimestampCollected'].max(),
-                               freq='5T')
+                               freq='5min')
     df = df.set_index('UTCTimestampCollected').reindex(full_range).reset_index()
     df.rename(columns={'index': 'UTCTimestampCollected'}, inplace=True)
 
     df['NetSiteAbbrev'].fillna(station_id_val, inplace=True)
     df['County'].fillna(county_val, inplace=True)
 
-    total_missing_5min = df['NetSiteAbbrev'].isna().sum()  # rows added
+    total_missing_5min = len(full_range) - df['NetSiteAbbrev'].count()
 
     # --- 2️⃣ Remove gaps > 6 hours ---
     df.set_index('UTCTimestampCollected', inplace=True)
@@ -139,7 +147,8 @@ for file in input_files:
         report_lines.append(f"{col}: {count}\n")
     report_lines.append("\nValues filled by Random Forest per attribute:\n")
     for col, count in rf_filled_counts.items():
-        report_lines.append(f"{col}: {count}\n")
+        pct = (count / max(1, missing_counts_before[col])) * 100 if col in missing_counts_before else 0
+        report_lines.append(f"{col}: {count} ({pct:.1f}%)\n")
     report_lines.append(f"\nRows before removing 6-hour gaps: {before_rows}\n")
     report_lines.append(f"Rows after removing 6-hour gaps: {after_rows}\n")
 
