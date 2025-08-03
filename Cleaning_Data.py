@@ -15,7 +15,6 @@ delete_gap_threshold = timedelta(hours=6)
 
 
 def find_gaps(series, index):
-    """Find consecutive NaN gaps."""
     gaps = []
     is_nan = series.isna()
     start = None
@@ -31,20 +30,19 @@ def find_gaps(series, index):
 
 
 def fill_missing_with_rf(df, target_col):
-    """Fill missing values of a column using Random Forest trained on other features."""
     filled_count = 0
     try:
         features = df.drop(columns=[target_col])
         mask = df[target_col].notna()
         if mask.sum() == 0 or mask.sum() == len(df):
-            return df[target_col], filled_count  # Nothing to train or predict
+            return df[target_col], filled_count
 
         X_train = features[mask]
         y_train = df.loc[mask, target_col]
         X_pred = features[~mask]
 
         if len(X_train) < 10:
-            return df[target_col], filled_count  # Not enough data to train
+            return df[target_col], filled_count
 
         rf = RandomForestRegressor(n_estimators=100, random_state=42)
         rf.fit(X_train, y_train)
@@ -64,39 +62,49 @@ for file in input_files:
 
     # --- Read CSV safely ---
     df = pd.read_csv(file_path, dtype=str, low_memory=False, skiprows=[1])
+    print(f"Original rows in file: {len(df)}")
+
     df['UTCTimestampCollected'] = pd.to_datetime(
         df['UTCTimestampCollected'],
-        errors='coerce',
-        infer_datetime_format=True
+        errors='coerce'  # Removed deprecated infer_datetime_format
     )
+    before_dropna = len(df)
     df = df.dropna(subset=['UTCTimestampCollected'])
+    after_dropna = len(df)
+    print(f"Rows after timestamp parsing & dropping invalid: {after_dropna} (dropped {before_dropna - after_dropna})")
     df.sort_values('UTCTimestampCollected', inplace=True)
 
-    # Identify all weather variable columns dynamically
+    # Identify columns dynamically
     static_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
     all_vars = [c for c in df.columns if c not in static_cols]
     correct_order = static_cols + all_vars
 
-    # Convert weather columns to numeric
+    # Convert numeric columns
     for col in all_vars:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # --- 1️⃣ Add missing 5-min timestamps ---
+    # Station info
     station_id_val = df['NetSiteAbbrev'].dropna().iloc[0]
     county_val = df['County'].dropna().iloc[0]
 
+    # --- Add missing 5-min timestamps ---
     full_range = pd.date_range(df['UTCTimestampCollected'].min(),
                                df['UTCTimestampCollected'].max(),
                                freq='5min')
+    print(f"Full 5-min range length: {len(full_range)}")
+    print(f"Date range from {full_range[0]} to {full_range[-1]}")
+
     df = df.set_index('UTCTimestampCollected').reindex(full_range).reset_index()
     df.rename(columns={'index': 'UTCTimestampCollected'}, inplace=True)
 
-    df['NetSiteAbbrev'].fillna(station_id_val, inplace=True)
-    df['County'].fillna(county_val, inplace=True)
+    df['NetSiteAbbrev'] = df['NetSiteAbbrev'].fillna(station_id_val)
+    df['County'] = df['County'].fillna(county_val)
 
     total_missing_5min = len(full_range) - df['NetSiteAbbrev'].count()
+    print(f"Missing 5-min timestamps added: {total_missing_5min}")
+    print(f"Rows after adding missing 5-min timestamps: {len(df)}")
 
-    # --- 2️⃣ Remove gaps > 6 hours ---
+    # --- Remove gaps > 6 hours ---
     df.set_index('UTCTimestampCollected', inplace=True)
     deleted_rows = set()
     gap_logs = []
@@ -115,9 +123,10 @@ for file in input_files:
 
     df = df.drop(index=list(deleted_rows))
     after_rows = len(df)
+    print(f"Rows after removing >6 hour gaps: {after_rows} (removed {before_rows - after_rows})")
     df.reset_index(inplace=True)
 
-    # --- 3️⃣ Fill remaining gaps with Random Forest ---
+    # --- Fill remaining gaps with Random Forest ---
     missing_counts_before = df[all_vars].isna().sum().to_dict()
     rf_filled_counts = {}
     features_for_rf = df[all_vars].copy()
@@ -128,14 +137,14 @@ for file in input_files:
 
     df[all_vars] = features_for_rf[all_vars]
 
-    # --- 4️⃣ Save cleaned CSV ---
+    # --- Save cleaned CSV ---
     station_id = station_id_val
     df = df[correct_order]
     output_path = os.path.join(output_folder, f"{station_id}.csv")
     df.to_csv(output_path, index=False, float_format="%.4f")
     print(f"✅ Saved cleaned CSV: {output_path}")
 
-    # --- 5️⃣ Save report ---
+    # --- Save report ---
     report_lines = []
     report_lines.append(f"Station ID: {station_id}\n")
     report_lines.append(f"Total rows (original): {len(full_range)}\n")
