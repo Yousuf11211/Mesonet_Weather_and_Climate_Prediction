@@ -1,21 +1,19 @@
 import pandas as pd
 import os
 
-# --- CONFIGURATION ---
 input_folder = 'filled_timestamps'
 target_file = 'ELST.csv'  # Change as needed
 file_path = os.path.join(input_folder, target_file)
 
-# --- Load Data ---
 df = pd.read_csv(file_path, parse_dates=["UTCTimestampCollected"])
 df['UTCTimestampCollected'] = pd.to_datetime(df['UTCTimestampCollected'], errors='coerce')
 total_rows = len(df)
 
-# --- Soil columns observed every 30 mins only ---
+#measured only every 30-min
 soil_cols = ['SM02', 'SM04', 'ST02', 'ST04']
 soil_df = df[df['UTCTimestampCollected'].dt.minute.isin([0, 30])]
 
-# --- Function to find longest missing streak and its dates ---
+#finds longest missing gap
 def find_longest_missing_streak(series, timestamps):
     is_nan = series.isna()
     max_len = 0
@@ -37,7 +35,6 @@ def find_longest_missing_streak(series, timestamps):
                 best_end = i - 1
             current_len = 0
 
-    # Final check at end
     if current_len > max_len:
         max_len = current_len
         best_start = start_idx
@@ -51,7 +48,6 @@ def find_longest_missing_streak(series, timestamps):
 
     return max_len, start_time, end_time
 
-# --- Analyze Missing Values ---
 missing_summary = {}
 for col in df.columns:
     if col == 'UTCTimestampCollected':
@@ -76,13 +72,12 @@ for col in df.columns:
             "Streak End": streak_end
         }
 
-# --- Print Summary ---
-print(f"\n📊 Missing value summary for {target_file}")
+print(f"\nMissing value summary for {target_file}")
 print(f"Total rows in full CSV: {total_rows}")
 print(f"Soil rows used (30-min filter): {len(soil_df)}\n")
 
 if not missing_summary:
-    print("✅ No missing values found.")
+    print("No missing values found.")
 else:
     print(f"{'Column':<20} {'Missing Count':<15} {'Max Consecutive Missing':<25} {'Streak Start':<20} {'Streak End'}")
     print("-" * 100)
