@@ -6,8 +6,7 @@ from datetime import timedelta
 from sklearn.impute import SimpleImputer
 from sklearn.tree import DecisionTreeRegressor
 
-# --- CONFIG ---
-input_folder = 'filled_timestamps'  # CHANGE THIS if needed
+input_folder = 'filled_timestamps'
 output_folder = 'decision_tree'
 gap_threshold = timedelta(days=30)
 target_cols = ['VT20', 'VT90']
@@ -17,7 +16,6 @@ all_columns = meta_cols + [
     'SM02', 'SM04', 'ST02', 'ST04', 'VT05', 'VT20', 'VT90', 'VR05', 'VR20', 'VR90'
 ]
 
-# --- HELPERS ---
 def find_gaps(series, timestamps):
     gaps = []
     start = None
@@ -48,7 +46,6 @@ def plot_feature_importance(importances, features, out_path):
     plt.savefig(out_path)
     plt.close()
 
-# --- MAIN ---
 os.makedirs(output_folder, exist_ok=True)
 input_files = [f for f in os.listdir(input_folder) if f.endswith('.csv')]
 
@@ -89,6 +86,5 @@ for file in input_files:
         df_case.to_csv(os.path.join(output_folder, f"{site}_{case_name}.csv"),
                        index=False, float_format="%.4f")
 
-    # Save feature importance only for case1
     plot_feature_importance(feature_importance, features,
                             os.path.join(output_folder, f"{site}_feature_importance.png"))
