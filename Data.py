@@ -2,46 +2,35 @@ import pandas as pd
 import glob
 import os
 
-# Show all columns when printing
 pd.set_option('display.max_columns', None)
 
-# Get all CSV files from folder 'a'
+#change folder names as required
 file_paths = glob.glob('b/*.csv')
 print(f"Found {len(file_paths)} CSV files.\n")
 
-# Prepare output folder
 os.makedirs("site_reports", exist_ok=True)
-
-# Use 5-minute interval (future-proof)
 expected_freq = '5min'
 
-# Track all features for comparison
 feature_sets = []
 
-# Process each file
 for file_path in file_paths:
     site_name = os.path.splitext(os.path.basename(file_path))[0]
     report_lines = []
     try:
-        # Read and parse file
         df = pd.read_csv(file_path, header=0, skiprows=[1], low_memory=False)
         df['UTCTimestampCollected'] = pd.to_datetime(df['UTCTimestampCollected'], errors='coerce')
         df = df.dropna(subset=['UTCTimestampCollected'])
-
-        # Find duplicate timestamps (but don't remove)
+#checks duplicate timestamps
         duplicate_rows = df[df.duplicated(subset='UTCTimestampCollected', keep=False)]
-
-        # Sort by time and set index
+#sorts by time
         df = df.sort_values('UTCTimestampCollected')
         df.set_index('UTCTimestampCollected', inplace=True)
 
-        # Expected full time index (5-minute spacing)
         start_time = df.index.min()
         end_time = df.index.max()
         expected_index = pd.date_range(start=start_time, end=end_time, freq=expected_freq)
         missing_timestamps = expected_index.difference(df.index)
 
-        # Track columns (features)
         features = set(df.columns)
         feature_sets.append(features)
         print(f"Site: {site_name}")
