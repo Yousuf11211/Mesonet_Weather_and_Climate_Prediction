@@ -3,133 +3,108 @@ import pandas as pd
 import joblib
 from sklearn.metrics import mean_absolute_error
 
-# Config
+# --- CONFIG ---
 model_types = ['LightGBM', 'RandomForest', 'XGBoost']
 sites = ['ELST', 'LXGN']
-target_vars = ['VT20', 'VT90', 'VT20_VT90_multi']
+drop_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
 base_model_dir = 'trained_models'
 base_data_dir = 'Random_Forest'
 output_report_dir = 'Forecasting_Comparison_Reports'
-drop_cols = ['NetSiteAbbrev', 'County', 'UTCTimestampCollected']
 os.makedirs(output_report_dir, exist_ok=True)
 
-print("Starting model evaluation...\n")
+print("Starting evaluation for all available models...\n")
 
 for model_type in model_types:
-    print(f"--- MODEL TYPE: {model_type} ---")
     for site in sites:
-        model_site_dir = os.path.join(base_model_dir, model_type, site)
-        if not os.path.exists(model_site_dir):
-            print(f"  Model directory not found for {site} under {model_type}, skipping.")
+        site_model_path = os.path.join(base_model_dir, model_type, site)
+        data_path = os.path.join(base_data_dir, f"{site}_no_long_gaps", f"{site}.csv")
+
+        if not os.path.exists(site_model_path):
+            print(f"Model path not found: {site_model_path}")
+            continue
+        if not os.path.exists(data_path):
+            print(f"Data CSV not found: {data_path}")
             continue
 
-        data_folder = f"{site}_no_long_gaps"
-        csv_path = os.path.join(base_data_dir, data_folder, f"{site}.csv")
-        if not os.path.exists(csv_path):
-            print(f"  Data file missing for {site} at {csv_path}, skipping.")
-            continue
+        print(f"Processing models for site: {site}, model type: {model_type}")
+        df_original = pd.read_csv(data_path)
+        report_lines = [f"Evaluation Report for {site} – {model_type}"]
 
-        errors = {}
-
-        # Sort model files for consistent order
-        for model_file in sorted(os.listdir(model_site_dir)):
+        for model_file in sorted(os.listdir(site_model_path)):
             if not model_file.endswith('.pkl'):
                 continue
-            model_path = os.path.join(model_site_dir, model_file)
-            model_name = model_file.replace('_model.pkl', '')
+
+            # Keep full model filename without .pkl extension
+            model_target = model_file.replace(".pkl", "")
+
+            model_path = os.path.join(site_model_path, model_file)
 
             try:
                 model = joblib.load(model_path)
             except Exception as e:
-                print(f"    Failed to load model {model_file}: {e}")
+                print(f"  Failed to load model {model_file}: {e}")
                 continue
 
-            # Reload full data fresh for each model
-            df = pd.read_csv(csv_path)
-            print(f"  Loaded data for {site} ({len(df)} rows) to evaluate model {model_name}")
+            # Reload fresh data for each model
+            df = df_original.copy()
+            print(f"CSV Loaded: {data_path}")
+
+            # Determine target columns based on model filename substring
+            if 'VT20_VT90' in model_target:
+                target_cols = ['VT20', 'VT90']
+            elif 'VT20' in model_target:
+                target_cols = ['VT20']
+            elif 'VT90' in model_target:
+                target_cols = ['VT90']
+            else:
+                print(f"  Unknown target type in model filename: {model_file}. Skipping.")
+                continue
+
+            cols_to_drop = drop_cols + target_cols
+            print(f"Columns Dropped: {cols_to_drop}")
+
+            features = df.drop(columns=cols_to_drop, errors='ignore')
+            targets = df[target_cols]
+
+            print(f"Model Used: {model_target} ({model_type})")
+
+            # Reorder features if model supports it
+            model_features = None
+            if hasattr(model, 'feature_name_'):
+                model_features = model.feature_name_
+            elif hasattr(model, 'estimators_'):
+                base_estimator = model.estimators_[0]
+                if hasattr(base_estimator, 'feature_name_'):
+                    model_features = base_estimator.feature_name_
+
+            if model_features:
+                features = features.reindex(columns=model_features, fill_value=0)
 
             try:
-                if model_name == 'VT20':
-                    if 'VT20' not in df.columns:
-                        print(f"    VT20 column missing in data, skipping model {model_name}")
-                        continue
-                    features = df.drop(columns=drop_cols + ['VT20'], errors='ignore')
-                    target = df['VT20']
-
-                elif model_name == 'VT90':
-                    if 'VT90' not in df.columns:
-                        print(f"    VT90 column missing in data, skipping model {model_name}")
-                        continue
-                    features = df.drop(columns=drop_cols + ['VT90'], errors='ignore')
-                    target = df['VT90']
-
-                elif model_name == 'VT20_VT90_multi':
-                    if 'VT20' not in df.columns or 'VT90' not in df.columns:
-                        print(f"    VT20 or VT90 columns missing for multi-output model, skipping {model_name}")
-                        continue
-                    # For multi-output drop metadata only (keep both targets)
-                    features = df.drop(columns=drop_cols, errors='ignore')
-                    target = df[['VT20', 'VT90']]
-
-                else:
-                    print(f"    Unknown model name {model_name}, skipping.")
-                    continue
-
-                # Get feature names from model (if possible) to reorder inputs
-                if hasattr(model, 'feature_name_'):
-                    model_features = model.feature_name_
-                elif hasattr(model, 'estimators_'):
-                    base_estimator = model.estimators_[0]
-                    if hasattr(base_estimator, 'feature_name_'):
-                        model_features = base_estimator.feature_name_
-                    else:
-                        model_features = None
-                else:
-                    model_features = None
-
-                if model_features is not None:
-                    missing_feats = set(model_features) - set(features.columns)
-                    extra_feats = set(features.columns) - set(model_features)
-                    if missing_feats:
-                        print(f"    WARNING: Missing features for model {model_name}: {missing_feats}")
-                    if extra_feats:
-                        print(f"    WARNING: Extra features in data for model {model_name}: {extra_feats}")
-
-                    features = features.reindex(columns=model_features, fill_value=0)
-
                 preds = model.predict(features)
 
-                if model_name == 'VT20_VT90_multi':
-                    mae_vt20 = mean_absolute_error(target['VT20'], preds[:, 0])
-                    mae_vt90 = mean_absolute_error(target['VT90'], preds[:, 1])
-                    errors[model_name] = (mae_vt20, mae_vt90)
+                if len(target_cols) == 2:  # Multi-output model
+                    mae1 = mean_absolute_error(targets[target_cols[0]], preds[:, 0])
+                    mae2 = mean_absolute_error(targets[target_cols[1]], preds[:, 1])
+                    report_lines.append(f"{model_target}: MAE {target_cols[0]} = {mae1:.4f}, MAE {target_cols[1]} = {mae2:.4f}")
+                    print(f"Prediction completed for model: {model_target} (SUCCESS)")
                 else:
-                    mae = mean_absolute_error(target, preds)
-                    errors[model_name] = mae
-
+                    mae = mean_absolute_error(targets[target_cols[0]], preds)
+                    report_lines.append(f"{model_target}: MAE = {mae:.4f}")
+                    print(f"Prediction completed for model: {model_target} (SUCCESS)")
             except Exception as e:
-                print(f"    Prediction failed for model {model_name}: {e}")
+                report_lines.append(f"{model_target}: Prediction FAILED - {e}")
+                print(f"Prediction failed for model: {model_target} (FAILED) - {e}")
 
-        if not errors:
-            print(f"  No models evaluated for site {site}.")
-            continue
+            # Clear memory
+            del df, features, targets
+            print("Data cleared, ready to reload CSV for next model.\n")
 
-        # Save report
-        report_path = os.path.join(output_report_dir, f"{model_type}_{site}_forecast_report.txt")
+        # Save report file for this site and model type
+        report_path = os.path.join(output_report_dir, f"{site}_{model_type}_forecast_eval.txt")
         with open(report_path, 'w') as f:
-            f.write(f"Forecasting Evaluation Report for site: {site}\n")
-            f.write(f"Model Type: {model_type}\n")
-            f.write("-" * 50 + "\n")
+            f.write('\n'.join(report_lines))
 
-            for model_n, err in errors.items():
-                if model_n == 'VT20_VT90_multi':
-                    f.write(f"{model_n} Model MAE:\n")
-                    f.write(f"  VT20: {err[0]:.4f}\n")
-                    f.write(f"  VT90: {err[1]:.4f}\n")
-                else:
-                    f.write(f"{model_n} Model MAE: {err:.4f}\n")
-            f.write("-" * 50 + "\n")
+        print(f"Report saved to: {report_path}\n")
 
-        print(f"  Report saved to: {report_path}\n")
-
-print("Evaluation completed.")
+print("Evaluation completed for all models.")

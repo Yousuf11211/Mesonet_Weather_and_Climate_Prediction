@@ -8,7 +8,6 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.multioutput import MultiOutputRegressor
 import joblib
 
-# --- CONFIG ---
 base_dir = 'Random_Forest'
 output_dir = 'Forecasting_using_xgboost'
 model_output_base = 'trained_models/XGBoost'
@@ -139,7 +138,7 @@ for site_folder in os.listdir(base_dir):
             plt.close()
             print(f"    Plot saved to: {plot_path}")
 
-        # Train multi-output model for VT20 & VT90 together
+        # Train multi-output model
         print("  Forecasting VT20 & VT90 together (multi-output)...")
 
         if all(t in df_features.columns for t in target_variables):

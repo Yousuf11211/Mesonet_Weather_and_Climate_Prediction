@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Use a non-GUI backend suitable for scripts
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.tree import DecisionTreeRegressor
@@ -11,7 +11,6 @@ from sklearn.metrics import mean_squared_error, r2_score
 import shap
 
 
-# --- FEATURE IMPORTANCE FUNCTION ---
 def calculateFeatureImportance(df, target_col, output_dir, excluded_features=None):
     print(f"[FeatureImportance] Starting feature importance calculation for target: {target_col}")
     if excluded_features is None:
@@ -20,7 +19,6 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
 
     print(f"[FeatureImportance] Excluding features: {excluded_features}")
 
-    # Prepare data
     X = df.drop(columns=[target_col] + [f for f in excluded_features if f in df.columns])
     y = df[target_col]
     print(f"[FeatureImportance] Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
@@ -31,14 +29,12 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     )
     print(f"[FeatureImportance] Split data into train ({X_train.shape[0]}) and test ({X_test.shape[0]})")
 
-    # --- Decision Tree ---
     dt = DecisionTreeRegressor(random_state=42)
     dt.fit(X_train, y_train)
     y_pred_dt = dt.predict(X_test)
     dt_imp = pd.Series(dt.feature_importances_, index=X.columns)
     print("[FeatureImportance] Decision Tree model trained")
 
-    # --- Random Forest ---
     rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
     rf.fit(X_train, y_train)
     y_pred_rf = rf.predict(X_test)
@@ -46,14 +42,13 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     rf_imp = pd.Series(rf_perm.importances_mean, index=X.columns)
     print("[FeatureImportance] Random Forest model trained and permutation importance calculated")
 
-    # --- SHAP ---
     print("[FeatureImportance] Computing SHAP values (this might take some time)...")
     explainer = shap.PermutationExplainer(rf.predict, X_test, n_jobs=-1)
     X_test_sample = X_test.sample(min(1000, len(X_test)), random_state=42)
     shap_values = explainer(X_test_sample)
     print("[FeatureImportance] SHAP values computed")
 
-    # --- Plot Decision Tree ---
+    # Plot Decision Tree
     dt_plot = dt_imp.nlargest(10)
     plt.figure(figsize=(10, 6))
     dt_plot.plot.barh()
@@ -66,7 +61,7 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     plt.close()
     print(f"[FeatureImportance] Decision Tree importance plot saved to {dt_plot_path}")
 
-    # --- Plot Random Forest ---
+    #Plot Random Forest
     rf_plot = rf_imp.nlargest(10)
     plt.figure(figsize=(10, 6))
     rf_plot.plot.barh()
@@ -79,7 +74,7 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     plt.close()
     print(f"[FeatureImportance] Random Forest importance plot saved to {rf_plot_path}")
 
-    # --- SHAP Summary Plot ---
+    #SHAP Summary Plot
     shap_plot_path = os.path.join(output_dir, f"{target_col}_shap.png")
     shap.summary_plot(shap_values, X_test_sample, plot_type="bar", max_display=10, show=False)
     plt.tight_layout()
@@ -87,7 +82,7 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     plt.close()
     print(f"[FeatureImportance] SHAP summary plot saved to {shap_plot_path}")
 
-    # --- Save R² and RMSE ---
+    #Save R² and RMSE
     dt_r2 = r2_score(y_test, y_pred_dt)
     rf_r2 = r2_score(y_test, y_pred_rf)
     dt_rmse = np.sqrt(mean_squared_error(y_test, y_pred_dt))
@@ -105,7 +100,7 @@ def calculateFeatureImportance(df, target_col, output_dir, excluded_features=Non
     }
 
 
-# --- MISSING VALUE FILLING FUNCTION ---
+#MISSING VALUE FILLING FUNCTION
 original_column_order = [
     'NetSiteAbbrev', 'County', 'UTCTimestampCollected',
     'TAIR', 'DWPT', 'PRCP', 'PRES', 'RELH', 'SRAD',
@@ -229,7 +224,6 @@ def fill_missing_values(df, filename, site_folder):
     return df, summary_row
 
 
-# --- MAIN SCRIPT ---
 input_folder = 'Gap_Deleted_CSVs'
 output_root = 'Random_Forest'
 os.makedirs(output_root, exist_ok=True)

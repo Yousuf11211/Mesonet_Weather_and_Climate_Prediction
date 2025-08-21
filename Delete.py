@@ -1,7 +1,6 @@
 import pandas as pd
 import os
 
-# Folder and file setup
 input_folder = 'Original_data'
 output_folder = 'updated_site_reports'
 filtered_folder = 'filtered_data'
@@ -25,17 +24,14 @@ for filename in target_sites:
     report_lines = []
 
     try:
-        # Count raw data rows (excluding header + units row)
         raw_total_rows = sum(1 for _ in open(path)) - 2
 
-        # Load and clean data
         df = pd.read_csv(path, header=0, skiprows=[1], low_memory=False)
         df['UTCTimestampCollected'] = pd.to_datetime(df['UTCTimestampCollected'], errors='coerce')
         df = df.dropna(subset=['UTCTimestampCollected'])
         df = df.sort_values('UTCTimestampCollected')
         df.set_index('UTCTimestampCollected', inplace=True)
 
-        # --- Logic: TAIR + VT90 + SM02 + PRES ---
         required_cols = ['TAIR', 'VT90', 'SM02', 'PRES']
         valid_mask = df[required_cols].notna().all(axis=1)
         start_time = df.index[valid_mask].min()
@@ -45,8 +41,7 @@ for filename in target_sites:
         rows_expected = len(expected_index)
         rows_present = rows_expected - len(missing_ts)
 
-        # --- Console Output ---
-        print(f"\n📍 Site: {site_name}")
+        print(f"\nSite: {site_name}")
         print(f"Total Rows in CSV file: {raw_total_rows}")
         print(f"Start (TAIR + VT90 + SM02 + PRES): {start_time}")
         print(f"Expected 5-min timestamps: {rows_expected}")
@@ -70,7 +65,7 @@ for filename in target_sites:
         #     for line in report_lines:
         #         f.write(line + '\n')
         #
-        # print(f"✅ Report saved: {report_path}")
+        # print(f"Report saved: {report_path}")
 
         # --- Prompt for deletion of early rows ---
         to_delete = df[df.index < start_time]
@@ -81,7 +76,6 @@ for filename in target_sites:
             filtered_df = df.loc[start_time:].copy()
             filtered_df.reset_index(inplace=True)
 
-            # Reorder columns if possible
             if all(col in filtered_df.columns for col in desired_order):
                 filtered_df = filtered_df[desired_order]
             else:

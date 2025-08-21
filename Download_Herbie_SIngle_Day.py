@@ -1,8 +1,8 @@
 import pandas as pd
 from herbie import Herbie
-from datetime import datetime, timedelta
+from datetime import datetime
 
-herbie = Herbie(date=datetime(2025, 1, 29))
+herbie = Herbie(date=datetime(2025, 1, 29))  # specify date here
 
 parameter_names = [
     "Visibility_surface",
@@ -37,65 +37,45 @@ parameter_names = [
     "HTFR_surface"
 ]
 
-start_time = datetime(2025, 1, 29, 0, 0)
-end_time = datetime(2025, 1, 29, 23, 55)
+print("Downloading HRRR data for specified parameters at 2025-01-29...")
 
-time_list = []
-cur_time = start_time
-while cur_time <= end_time:
-    time_list.append(cur_time)
-    cur_time += timedelta(minutes=5)
+row = {"timestamp": datetime.utcnow()}  # record download time
+missing_params = []
+data_found = {}
 
-records = []
-missing_counts = {pname: 0 for pname in parameter_names}
-data_found = {pname: False for pname in parameter_names}
+for pname in parameter_names:
+    value = None
+    try:
+        data = herbie.get(
+            model='hrrr',
+            variables=[pname],
+            spatial_points=[(38.0, -97.0)],
+            verbose=False
+        )
+        if pname in data and data[pname]:
+            value = data[pname][0]
+    except Exception:
+        pass
 
-print(f"Downloading HRRR data for {len(time_list)} timestamps...")
+    if value is None:
+        missing_params.append(pname)
+        data_found[pname] = False
+    else:
+        data_found[pname] = True
+    row[pname] = value
 
-for dt in time_list:
-    row = {"timestamp": dt}
-    for pname in parameter_names:
-        value = None
-        try:
-            data = herbie.get(
-                model='hrrr',
-                variables=[pname],
-                date=dt,
-                spatial_points=[(38.0, -97.0)],
-                verbose=False
-            )
-            if pname in data and data[pname]:
-                value = data[pname][0]
-        except Exception:
-            pass
+df = pd.DataFrame([row])
+df.to_csv("HRRR_named_params_2025-01-29.csv", index=False)
 
-        if value is None:
-            missing_counts[pname] += 1
-        else:
-            data_found[pname] = True
+with open("HRRR_named_params_2025-01-29_report.txt", "w") as f:
+    f.write(f"HRRR Data Download Report for 2025-01-29\n")
+    f.write(f"Download Timestamp (UTC): {row['timestamp']}\n")
+    f.write(f"Total Parameters Requested: {len(parameter_names)}\n")
+    f.write(f"Parameters Successfully Downloaded: {sum(data_found.values())}\n")
+    f.write(f"Parameters Missing:\n")
+    for p in missing_params:
+        f.write(f" - {p}\n")
 
-        row[pname] = value
-    records.append(row)
-
-# Save main data CSV
-df = pd.DataFrame(records)
-data_csv = "HRRR_Jan29_2025_named_params_5min.csv"
-df.to_csv(data_csv, index=False)
-
-# Write detailed TXT report
-report_txt = "HRRR_Jan29_2025_download_report.txt"
-total_timestamps = len(time_list)
-
-with open(report_txt, "w") as f:
-    f.write(f"HRRR Download Report for {start_time.date()}\n")
-    f.write(f"Total timestamps (5-min intervals): {total_timestamps}\n\n")
-    for pname in parameter_names:
-        present = total_timestamps - missing_counts[pname]
-        f.write(f"Parameter: {pname}\n")
-        f.write(f"  Timestamps with data   : {present}\n")
-        f.write(f"  Timestamps missing data: {missing_counts[pname]}\n")
-        f.write(f"  Data found at least once: {'Yes' if data_found[pname] else 'No'}\n")
-        f.write("-" * 40 + "\n")
-
-print(f"Download complete. Data saved to '{data_csv}'.")
-print(f"Report saved as text file '{report_txt}'.")
+print("Download complete.")
+print(f"Data saved to 'HRRR_named_params_2025-01-29.csv'")
+print(f"Report saved to 'HRRR_named_params_2025-01-29_report.txt'")

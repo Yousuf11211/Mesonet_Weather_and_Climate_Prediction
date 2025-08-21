@@ -2,7 +2,6 @@ from herbie import Herbie
 from datetime import datetime, timedelta
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
-import os
 
 start_date = datetime(2020, 1, 1, 0)
 end_date = datetime(2024, 12, 31, 0)

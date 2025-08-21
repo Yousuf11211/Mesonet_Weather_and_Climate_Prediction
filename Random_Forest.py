@@ -6,7 +6,6 @@ from datetime import timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 
-# --- CONFIG ---
 input_file = 'filled_timestamps/ELST.csv'
 output_folder = 'Random_Forest'
 case1_output = os.path.join(output_folder, 'ELST_case1_all.csv')
@@ -14,7 +13,6 @@ case2_output = os.path.join(output_folder, 'ELST_case2_skip_large.csv')
 plot_file = os.path.join(output_folder, 'ELST_feature_importance.png')
 gap_threshold = timedelta(days=30)
 
-# --- Columns ---
 all_vars = [
     'TAIR', 'DWPT', 'PRCP', 'PRES', 'RELH', 'SRAD', 'WDIR', 'WSPD',
     'WDSD', 'WSSD', 'SM02', 'SM04', 'ST02', 'ST04', 'VT05', 'VT20', 'VT90',
@@ -25,15 +23,15 @@ correct_order = [
 ] + all_vars
 targets_for_plot = ['VT20', 'VT90']
 
-# --- Ensure output folder ---
+#Ensure output folder
 os.makedirs(output_folder, exist_ok=True)
 
-# --- Load Data ---
+#Load Data
 df = pd.read_csv(input_file, parse_dates=['UTCTimestampCollected'])
 df.set_index('UTCTimestampCollected', inplace=True)
 df.sort_index(inplace=True)
 
-# --- Utilities ---
+#Utilities
 def find_gaps(series):
     gaps = []
     is_nan = series.isna()
@@ -48,7 +46,7 @@ def find_gaps(series):
         gaps.append((start, len(series) - 1))
     return gaps
 
-# --- Gap Filling ---
+#Gap Filling
 def fill_gaps(df_in, allow_large=True):
     df = df_in.copy()
     for target in all_vars:
@@ -75,7 +73,7 @@ def fill_gaps(df_in, allow_large=True):
             df.iloc[start:end+1, df.columns.get_loc(target)] = preds
     return df
 
-# --- Feature Importance Plot ---
+#Feature Importance Plot
 def plot_feature_importance(df):
     importance_dict = {}
     for target in targets_for_plot:
@@ -106,7 +104,7 @@ def plot_feature_importance(df):
     plt.savefig(plot_file)
     plt.close()
 
-# --- Run ---
+
 df_case1 = fill_gaps(df, allow_large=True)
 df_case2 = fill_gaps(df, allow_large=False)
 
@@ -120,7 +118,7 @@ df_case2.to_csv(case2_output, index=False, float_format="%.4f")
 
 plot_feature_importance(df_case1)
 
-print("✅ Finished filling ALL variables with RandomForest.")
-print(f"🔹 Case 1 (full fill): {case1_output}")
-print(f"🔹 Case 2 (skip large): {case2_output}")
-print(f"📊 Feature Plot saved to: {plot_file}")
+print("Finished filling ALL variables with RandomForest.")
+print(f"Case 1 (full fill): {case1_output}")
+print(f"Case 2 (skip large): {case2_output}")
+print(f"Feature Plot saved to: {plot_file}")

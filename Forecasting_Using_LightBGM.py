@@ -8,7 +8,6 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 import joblib
 
-# --- CONFIG ---
 base_dir = 'Random_Forest'
 output_dir = 'Forecasting_using_lightgbm'
 model_output_base = 'trained_models/LightGBM'
@@ -31,7 +30,6 @@ for site_folder in os.listdir(base_dir):
                 site_name = file.replace('.csv', '')
                 print(f"Processing site: {site_name}")
 
-                # --- LOAD DATA ---
                 try:
                     df = pd.read_csv(csv_path)
                 except Exception as e:
@@ -59,7 +57,7 @@ for site_folder in os.listdir(base_dir):
                 report_lines.append(f"Timestamp: {datetime.now()}")
                 report_lines.append("-" * 50)
 
-                # --- INDIVIDUAL MODELS ---
+                #INDIVIDUAL MODELS
                 for target in target_variables:
                     print(f"  Forecasting {target} (single-output)...")
 
@@ -82,7 +80,8 @@ for site_folder in os.listdir(base_dir):
                     )
                     model.fit(X_train, y_train)
 
-                    model_path = os.path.join(site_model_dir, f"{target}_model.pkl")
+                    # Save model
+                    model_path = os.path.join(site_model_dir, f"{site_name}_{target}_model.pkl")
                     joblib.dump(model, model_path)
                     print(f"    Model saved to: {model_path}")
 
@@ -128,8 +127,7 @@ for site_folder in os.listdir(base_dir):
                     plt.savefig(plot_path)
                     plt.close()
                     print(f"    Plot saved to: {plot_path}")
-
-                # --- MULTI-OUTPUT MODEL ---
+#MULTI-OUTPUT MODEL
                 print(f"  Forecasting {target_variables} together (multi-output)...")
                 if all(t in df_features.columns for t in target_variables):
                     X_multi = df_features.drop(columns=target_variables)
@@ -148,7 +146,8 @@ for site_folder in os.listdir(base_dir):
                     multi_model = MultiOutputRegressor(base_model)
                     multi_model.fit(X_train_mo, y_train_mo)
 
-                    model_path = os.path.join(site_model_dir, "VT20_VT90_multi_model.pkl")
+                    # Save multi-output model with site name prefix
+                    model_path = os.path.join(site_model_dir, f"{site_name}_VT20_VT90_multi_model.pkl")
                     joblib.dump(multi_model, model_path)
                     print(f"    Multi-output model saved to: {model_path}")
 
@@ -175,7 +174,6 @@ for site_folder in os.listdir(base_dir):
                 else:
                     print("    One or both target variables missing – skipping multi-output.")
 
-                # --- SAVE REPORT ---
                 site_report_path = os.path.join(output_dir, f"{site_name}_forecast_report.txt")
                 with open(site_report_path, 'w') as f:
                     f.write('\n'.join(report_lines))

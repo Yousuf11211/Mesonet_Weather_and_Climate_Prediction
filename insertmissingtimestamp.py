@@ -1,15 +1,12 @@
 import pandas as pd
 import os
 
-# --- Configuration ---
 input_folder = 'filtered_data'
 output_folder = 'timestamp_only_filled'
 os.makedirs(output_folder, exist_ok=True)
 
-# Files to process
 target_files = ['updated_ELST.csv', 'updated_LXGN.csv']
 
-# County lookup (adjust if needed)
 site_metadata = {
     "ELST": "Madison",
     "LXGN": "Choctaw"
@@ -21,9 +18,8 @@ for filename in target_files:
         site_code = filename.replace("updated_", "").replace(".csv", "")
         county = site_metadata.get(site_code, "Unknown")
 
-        print(f"\n🔄 Processing {site_code}...")
+        print(f"\nProcessing {site_code}...")
 
-        # Load file
         df = pd.read_csv(site_path, parse_dates=["UTCTimestampCollected"])
         df = df.sort_values("UTCTimestampCollected")
         df.set_index("UTCTimestampCollected", inplace=True)
@@ -47,7 +43,7 @@ for filename in target_files:
         # Save output
         output_path = os.path.join(output_folder, f"{site_code}_timestamp_filled.csv")
         df_full.to_csv(output_path, index=False)
-        print(f"✅ Saved: {output_path}")
+        print(f"Saved: {output_path}")
 
     except Exception as e:
-        print(f"❌ Failed to process {filename}: {e}")
+        print(f"Failed to process {filename}: {e}")
